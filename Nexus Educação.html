@@ -107,7 +107,7 @@
             max-width: 600px;
         }
         #modalConfirmacao {
-            z-index: 60; /* Garantir que a confirmação fique na frente de todos os outros modais */
+            z-index: 60; /* Garantir que a confirmação fique na frente de todos os modais */
         }
         input[type="file"] {
              color: #9ca3af;
@@ -164,6 +164,11 @@
         }
         .logo-parceiro:hover {
             transform: scale(1.1);
+        }
+        /* Certificado: Remove scrollbars para garantir conteúdo integral */
+        .certificado-content-noscroll {
+            max-height: none !important;
+            overflow-y: hidden !important;
         }
     </style>
 </head>
@@ -1214,7 +1219,7 @@
                     aulasHtml = curso.aulas.map((aula, index) => `
                         <div class="py-3">
                             <h5 class="font-semibold text-indigo-300">Aula ${index + 1}: ${aula.titulo}</h5>
-                            <p class="text-sm text-neutral-400 mt-1"><i class="fas fa-calendar-alt fa-fw mr-2"></i> Início em ${new Date(aula.data).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} das ${aula.horarioInicio} às ${aula.horarioFim}</p>
+                            <p class="text-sm text-neutral-400 mt-1"><i class="fas fa-calendar-alt fa-fw mr-2"></i> Início em ${new Date(aula.data).toLocaleDateString('pt-BR', {timeZone: 'UTC'})} às ${aula.horarioInicio}</p>
                             <p class="text-sm text-neutral-300 mt-1"><strong>Tópicos:</strong> ${aula.topicos}</p>
                         </div>
                     `).join('<hr class="border-neutral-700">');
@@ -1532,7 +1537,7 @@
                         case 'aprovado': statusInfo = '<span class="text-green-400 font-semibold">Acesso Liberado</span>'; acaoBotao = `<button onclick="window.acessarCurso(${cursoInfo.id})" class="btn-primary px-4 py-2 rounded-lg text-sm">Acessar Curso</button>`; break;
                         case 'reprovado': statusInfo = '<span class="text-red-400 font-semibold">Pagamento Reprovado</span>'; acaoBotao = '<button class="btn-danger text-white px-4 py-2 rounded-lg text-sm" disabled>Reprovado</button>'; break;
                         case 'reembolso_pendente': statusInfo = '<span class="text-blue-400 font-semibold">Curso Cancelado - Reembolso Pendente</span>'; break;
-                        case 'reembolsado': statusInfo = '<span class="text-gray-400 font-semibold">Curso Cancelado - Reembolsado</span>'; break;
+                        case 'reembolsado': statusInfo = '<span class="text-gray-400 font-semibold">Curso Cancelado - Reembolsado</span>'; acaoBotao = '<button class="btn-secondary px-4 py-2 rounded-lg text-sm" disabled>Reembolsado</button>'; break;
                     }
                     container.innerHTML += `<div class="glassmorphism p-4 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4"><div class="flex items-center gap-4"><img src="${cursoInfo.imagem}" class="w-24 h-16 object-cover rounded-md"><div><h4 class="font-bold text-lg">${cursoInfo.nomeDoCurso}</h4><p class="text-sm text-neutral-300">${statusInfo}</p></div></div><div class="flex items-center gap-4">${acaoBotao}</div></div>`;
                 }
@@ -2437,15 +2442,37 @@
             const textoPrincipal = tipo === 'aluno'
                 ? `<p class="text-lg text-neutral-300 mb-2">Certificamos que</p>
                    <p class="text-3xl font-bold text-white mb-2">${usuario.nomeCompleto}</p>
-                   <p class="text-lg text-neutral-300 mb-2">concluiu com aproveitamento o curso de</p>`
+                   <p class="text-lg text-neutral-300 mb-2">portador(a) do CPF nº ${usuario.cpf}, concluiu com aproveitamento o curso de</p>`
                 : `<p class="text-lg text-neutral-300 mb-2">Certificamos para os devidos fins que</p>
                    <p class="text-3xl font-bold text-white mb-2">${usuario.nomeCompleto}</p>
                    <p class="text-lg text-neutral-300 mb-2">portador(a) do CPF nº ${usuario.cpfCnpj}, atuou como palestrante no minicurso</p>`;
 
-            let aulasHtml = curso.aulas.map(aula => `<li><strong>${aula.titulo}:</strong> ${aula.topicos}</li>`).join('');
-            if (tipo === 'ministrante') {
-                const aulasDoMinistrante = curso.aulas.filter(aula => aula.ministrantes.includes(usuario.nomeCompleto));
-                aulasHtml = aulasDoMinistrante.map(aula => `<li><strong>${aula.titulo}:</strong> ${aula.topicos}</li>`).join('');
+            // Lógica para Tópicos Numerados
+            let aulasHtml = '';
+            if (curso.aulas && curso.aulas.length > 0) {
+                 const aulasParaExibir = tipo === 'aluno' ? curso.aulas : curso.aulas.filter(aula => aula.ministrantes.includes(usuario.nomeCompleto));
+                 
+                 aulasHtml = aulasParaExibir.map((aula) => {
+                     // Quebra os tópicos por ponto e vírgula, limpa espaços e capitaliza o primeiro
+                     const topicosArray = (aula.topicos || '').split(';').map(t => t.trim()).filter(t => t.length > 0).map(t => t.charAt(0).toUpperCase() + t.slice(1));
+                     
+                     if (topicosArray.length === 0) return '';
+                     
+                     // Corrige: Remove pontos finais duplicados, garantindo que haja apenas um ponto no final
+                     const listaTopicos = topicosArray.map((topico, idx) => {
+                         let textoTopico = topico.replace(/\.+$/, ''); // Remove pontos finais existentes
+                         return `<li>${idx + 1}. ${textoTopico}.</li>`; // Adiciona um ponto final
+                     }).join('');
+
+                     return `
+                        <div class="mb-3">
+                            <h5 class="font-semibold text-white mt-2">${aula.titulo}:</h5>
+                            <ul class="list-none list-inside space-y-1 text-neutral-300 mt-1">${listaTopicos}</ul>
+                        </div>
+                     `;
+                 }).join('');
+            } else {
+                aulasHtml = '<p class="text-neutral-400">Conteúdo programático não especificado.</p>';
             }
 
             let ministrantesHtml = '';
@@ -2455,42 +2482,96 @@
                 ministrantesHtml = nomesMinistrantes.map(nome => {
                     const ministranteInfo = todosMinistrantes.find(m => m.nomeCompleto === nome);
                     if (!ministranteInfo) return `<p>${nome}</p>`;
-                    // Lógica de titulação atualizada
+                    
+                    // Lógica para obter a titulação completa sem os dois pontos
                     const qualificacoes = Object.entries(ministranteInfo.formacao)
                         .filter(([key, value]) => value)
                         .map(([key, value]) => {
                             let tituloDisplay = key;
                             const isFeminino = isNomeFeminino(nome);
-                            if (key === 'mestreEm') tituloDisplay = isFeminino ? 'Mestra em' : 'Mestre em';
+                            
+                            // Mapeamento dos títulos para remover os dois pontos e ajustar o gênero
+                            if (key === 'graduadoEm') tituloDisplay = isFeminino ? 'Graduada em' : 'Graduado em';
+                            else if (key === 'especialistaEm') tituloDisplay = 'Especialista em';
+                            else if (key === 'mestreEm') tituloDisplay = isFeminino ? 'Mestra em' : 'Mestre em';
                             else if (key === 'doutorEm') tituloDisplay = isFeminino ? 'Doutora em' : 'Doutor em';
-                            return `${tituloDisplay.replace('Em', '').replace(/([A-Z])/g, ' $1').trim()}: ${value}`;
-                        }).join(', ');
+                            else if (key === 'posDoutorEm') tituloDisplay = isFeminino ? 'Pós-Doutora em' : 'Pós-Doutor em';
+                            
+                            return `${tituloDisplay} ${value}`;
+                        }).join('; ');
                         
-                    return `<div class="mb-2"><p class="font-bold">${ministranteInfo.nomeCompleto}</p><p class="text-xs text-neutral-400">${qualificacoes}</p></div>`;
+                    // Correção: Remove espaços antes de vírgulas e pontos-e-vírgulas
+                    const qualificacoesCorrigidas = qualificacoes.replace(/\s*([,;])/g, '$1');
+
+                    return `<div class="mb-2"><p class="font-bold">${ministranteInfo.nomeCompleto}</p><p class="text-xs text-neutral-400">${qualificacoesCorrigidas}</p></div>`; 
                 }).join('');
             }
 
-            const assinaturaHtml = `<div class="w-64"><img src="${curso.assinaturaAdmin}" class="max-h-16 mx-auto" alt="Assinatura"></div><div class="border-t-2 border-neutral-400 w-64 mx-auto pt-2"><p class="text-xs text-neutral-500">(Assinatura da Empresa)</p></div>`;
-            const dataEmissaoFormatada = `Juazeiro do Norte, ${dataEmissao.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}`;
+            // ALTERAÇÃO: 'Assinatura da Empresa' para 'Gestora'
+            const assinaturaHtml = `<div class="w-64"><img src="${curso.assinaturaAdmin}" class="max-h-16 mx-auto" alt="Assinatura"></div><div class="border-t-2 border-neutral-400 w-64 mx-auto pt-2"><p class="text-xs text-neutral-500">(Gestora)</p></div>`;
+            const dataEmissaoFormatada = `Emitido em: ${dataEmissao.toLocaleDateString('pt-BR')}`;
+            
+            // NOVO: Local de emissão
+            const localEmissao = 'Juazeiro do Norte, Ceará';
+            
+            // NOVO: Aviso legal (será movido para o final)
+            const avisoLegalHtml = `
+                <div class="text-center text-xs text-neutral-500 mt-10 relative z-10">
+                    <p>Curso livre de qualificação profissional, reconhecido conforme Lei nº 9.394/96 e Decreto nº 5.154/04.</p>
+                </div>
+            `;
 
             let contentGridHtml = '';
              if (tipo === 'aluno') {
-                contentGridHtml = `<div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-8 text-sm relative z-10 text-left"><div><h3 class="font-bold text-lg text-indigo-300 mb-3 border-b border-indigo-500/50 pb-1">Conteúdo Programático</h3><ul class="list-disc list-inside space-y-1 text-neutral-300">${aulasHtml}</ul></div><div><h3 class="font-bold text-lg text-indigo-300 mb-3 border-b border-indigo-500/50 pb-1">Ministrante(s)</h3><div class="space-y-2 text-neutral-300">${ministrantesHtml}</div></div></div>`;
+                contentGridHtml = `<div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-8 text-sm relative z-10 text-left">
+                                        <div>
+                                            <h3 class="font-bold text-lg text-indigo-300 mb-3 border-b border-indigo-500/50 pb-1">Conteúdo Programático</h3>
+                                            <div class="space-y-2 certificado-content-noscroll pr-2">${aulasHtml}</div>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-lg text-indigo-300 mb-3 border-b border-indigo-500/50 pb-1">Ministrante(s)</h3>
+                                            <div class="space-y-2 text-neutral-300 certificado-content-noscroll">${ministrantesHtml}</div>
+                                        </div>
+                                    </div>`;
             } else {
-                contentGridHtml = `<div class="my-8 text-sm relative z-10 text-left"><div><h3 class="font-bold text-lg text-indigo-300 mb-3 border-b border-indigo-500/50 pb-1">Conteúdo Programático</h3><ul class="list-disc list-inside space-y-1 text-neutral-300">${aulasHtml}</ul></div></div>`;
+                contentGridHtml = `<div class="my-8 text-sm relative z-10 text-left">
+                                        <div>
+                                            <h3 class="font-bold text-lg text-indigo-300 mb-3 border-b border-indigo-500/50 pb-1">Conteúdo Programático</h3>
+                                            <div class="space-y-2 certificado-content-noscroll pr-2">${aulasHtml}</div>
+                                        </div>
+                                    </div>`;
             }
 
-            return `
+            let certificadoFinalHtml = `
                 <div class="certificado-individual bg-neutral-800 text-white rounded-lg shadow-2xl border-4 border-indigo-500/50 p-8 relative overflow-hidden">
                     <div class="absolute -top-16 -left-16 w-48 h-48 border-8 border-indigo-500/20 rounded-full"></div>
                     <div class="absolute -bottom-20 -right-10 w-64 h-64 border-[12px] border-purple-500/20 rounded-full"></div>
                     <div class="text-center relative z-10"><h1 class="text-4xl font-bold nexus-gradient-text mb-2">CERTIFICADO</h1></div>
                     <div class="text-center my-8 relative z-10">${textoPrincipal}<p class="text-2xl font-semibold text-indigo-300">${curso.nomeDoCurso}</p><p class="text-neutral-400 mt-1 text-sm">com carga horária de ${cargaHoraria} horas, ${dataCursoTexto}.</p></div>
-                    ${tipo === 'ministrante' ? `<p class="text-center my-8 text-lg">${dataEmissaoFormatada}.</p>` : ''}
+                    
                     ${contentGridHtml}
-                    <div class="flex justify-center items-center mt-12 text-center relative z-10"><div>${assinaturaHtml}<div class="mt-4 text-xs text-neutral-300"><p class="font-bold">Maria Jaqueline da Silva Pereira</p><p>CNPJ: 62.323.279/0001-00</p>${tipo === 'aluno' ? `<p>Emitido em: ${dataEmissao.toLocaleDateString('pt-BR')}</p>` : ''}</div></div></div>
+
+                    <!-- BLOCO DE ASSINATURA E DETALHES -->
+                    <div class="flex justify-center items-center mt-12 text-center relative z-10">
+                        <div>
+                            ${assinaturaHtml}
+                            <div class="mt-4 text-xs text-neutral-300">
+                                <p class="font-bold">Maria Jaqueline da Silva Pereira</p>
+                                <p>CNPJ: 62.323.279/0001-00</p>
+                                <p>${localEmissao}</p>
+                                ${tipo === 'aluno' ? `<p>${dataEmissaoFormatada}</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- NOVO AVISO LEGAL CENTRALIZADO (Final) -->
+                    ${avisoLegalHtml}
+                    
                     <div class="border-t border-neutral-600 mt-10 pt-4 text-xs text-neutral-400 relative z-10"><div class="flex justify-end"><div class="text-right"><p class="font-bold">Código de Validação:</p><p class="font-mono">${codigo}</p></div></div></div>
                 </div>`;
+                
+            // REMOÇÃO DE ESPAÇOS ANTES DE VÍRGULAS (Aplica a limpeza final em todo o HTML gerado)
+            return certificadoFinalHtml.replace(/\s*,/g, ',');
         }
         
         window.visualizarCertificado = async function(tipo, codigo) {
@@ -2932,7 +3013,7 @@
                         const vinculo = Array.isArray(ministrante.cursosVinculados) ? ministrante.cursosVinculados.find(v => v.cursoId == curso.id) : null;
                         const certButton = vinculo && vinculo.certificadoCodigo
                             ? `<button onclick="window.visualizarCertificado('ministrante', '${vinculo.certificadoCodigo}')" class="btn-success text-white text-xs px-2 py-1 rounded-lg">Ver</button>`
-                            : `<button onclick="window.adminEmitirCertificado('ministrante', '${ministrante.email}', ${curso.id}, false)" class="btn-primary text-xs px-2 py-1 rounded-lg">Emitir</button>`;
+                            : `<button onclick="window.adminEmitirCertificado('ministrante', '${ministrante.email}', ${curso.id}, false, false)" class="btn-primary text-xs px-2 py-1 rounded-lg">Emitir</button>`;
 
                         return `<div class="flex justify-between items-center p-2 hover:bg-neutral-700/50 rounded-md">
                                     <span>${ministrante.nomeCompleto}</span>
@@ -3005,6 +3086,7 @@
                         <p class="text-center text-xs mt-1 truncate">${p.nome}</p>
                     </div>
                 `).join('');
+
             } catch (e) {
                 console.error("Erro ao renderizar parceiros no admin:", e);
                 document.getElementById('listaParceirosAdmin').innerHTML = '<p class="col-span-full text-red-500">Erro ao carregar parceiros.</p>';
@@ -3593,7 +3675,7 @@
                         if(inscricao.status === 'aprovado') {
                             certButton = inscricao.certificadoCodigo
                                 ? `<button onclick="window.visualizarCertificado('aluno', '${inscricao.certificadoCodigo}')" class="btn-success text-white text-xs px-2 py-1 rounded-lg">Ver</button>`
-                                : `<button onclick="window.adminEmitirCertificado('aluno', '${aluno.email}', ${curso.id}, true)" class="btn-primary text-xs px-2 py-1 rounded-lg">Liberar Certificado</button>`;
+                                : `<button onclick="window.adminEmitirCertificado('aluno', '${aluno.email}', ${curso.id}, true, false)" class="btn-primary text-xs px-2 py-1 rounded-lg">Liberar Certificado</button>`;
                         }
 
                         // Adiciona detalhes do cupom
@@ -3886,34 +3968,38 @@
         async function calcularStatusFrequencia(aluno, cursoId) {
             const { data: curso } = await supabaseClient.from('cursos').select('aulas').eq('id', cursoId).single();
             if (!curso || !curso.aulas || curso.aulas.length === 0) {
-                return { status: 'N/A', cor: 'text-gray-400' };
+                // Retorna como 'Presente' se não houver aulas para não bloquear o certificado.
+                return { status: 'Presente', cor: 'text-gray-400', percentual: 100 };
             }
             
             const inscricao = Array.isArray(aluno.cursosInscritos) ? aluno.cursosInscritos.find(i => i.cursoId == cursoId) : null;
             if (!inscricao || !inscricao.frequencia) {
-                return { status: 'Ausente', cor: 'text-red-400' };
+                return { status: 'Ausente', cor: 'text-red-400', percentual: 0 };
             }
 
             let aulasPresente = 0;
+            const aulasTotais = curso.aulas.length;
+
             curso.aulas.forEach((aula, index) => {
                 const registroAula = inscricao.frequencia[index] || {};
+                // Presença = 2 ou mais códigos de frequência registrados para a aula
                 if (Object.keys(registroAula).length >= 2) {
                     aulasPresente++;
                 }
             });
 
-            const percentual = (aulasPresente / curso.aulas.length) * 100;
+            const percentual = (aulasPresente / aulasTotais) * 100;
 
             if (percentual >= 75) {
-                return { status: 'Presente', cor: 'text-green-400' };
+                return { status: 'Presente', cor: 'text-green-400', percentual };
             } else if (percentual > 0) {
-                return { status: 'Parcial', cor: 'text-yellow-400' };
+                return { status: 'Parcial', cor: 'text-yellow-400', percentual };
             } else {
-                return { status: 'Ausente', cor: 'text-red-400' };
+                return { status: 'Ausente', cor: 'text-red-400', percentual: 0 };
             }
         }
         
-        window.adminEmitirCertificado = async function(tipo, email, cursoId, comFrequencia) {
+        window.adminEmitirCertificado = async function(tipo, email, cursoId, comFrequencia, isConfirmed) {
             const tabela = tipo + 's';
             const { data: usuario, error: userError } = await supabaseClient.from(tabela).select('*').eq('email', email).single();
             if (userError) {
@@ -3921,14 +4007,26 @@
                 return;
             }
 
-            if (tipo === 'aluno' && comFrequencia) {
-                const { status } = await calcularStatusFrequencia(usuario, cursoId);
+            // --- Lógica de Confirmação de Frequência Insuficiente (Apenas para Aluno) ---
+            if (tipo === 'aluno' && comFrequencia && !isConfirmed) {
+                const { status, percentual } = await calcularStatusFrequencia(usuario, cursoId);
+                
                 if (status !== 'Presente') {
-                    window.mostrarModal("A frequência do aluno não é suficiente para emitir o certificado.");
-                    return;
+                    window.hideLoader(); // Esconde o loader antes da confirmação
+                    const mensagemConfirmacao = `A frequência do aluno ${usuario.nomeCompleto} é de ${percentual.toFixed(0)}%. O mínimo é 75%. Deseja liberar o certificado mesmo assim?`;
+                    
+                    // Chama o modal de confirmação, e se confirmado, chama a função novamente com isConfirmed=true
+                    window.mostrarConfirmacao(mensagemConfirmacao, () => {
+                        window.adminEmitirCertificado(tipo, email, cursoId, comFrequencia, true);
+                    });
+                    return; // Sai da função esperando a confirmação
                 }
             }
+            // -----------------------------------------------------------------------------
 
+            window.showLoader(); // Garante que o loader está visível para o processamento final.
+
+            // A partir daqui, o certificado será emitido (ou a frequência é suficiente, ou foi confirmado)
             const codigo = `NEXUS-${tipo.substring(0,2).toUpperCase()}-${cursoId}-${usuario.id}`;
 
             if (tipo === 'aluno') {
@@ -3969,6 +4067,7 @@
              else {
                 await window.verInscritos(cursoId);
             }
+            window.hideLoader();
         }
 
         window.verAlunosEmpresa = async function(cnpj) {
@@ -4007,11 +4106,12 @@
                                     const { status: statusFrequencia, cor } = await calcularStatusFrequencia(aluno, inscricao.cursoId);
                                     
                                     let certButton = '';
-                                    // Certificate can only be issued if payment is approved and frequency is sufficient
-                                    if (inscricao.status === 'aprovado' && statusFrequencia === 'Presente') {
+                                    // Certificate can only be issued if payment is approved 
+                                    if (inscricao.status === 'aprovado') {
                                         certButton = inscricao.certificadoCodigo
                                             ? `<button onclick="window.visualizarCertificado('aluno', '${inscricao.certificadoCodigo}')" class="btn-success text-white text-xs px-2 py-1 rounded-lg">Ver</button>`
-                                            : `<button onclick="window.adminEmitirCertificado('aluno', '${aluno.email}', ${inscricao.cursoId}, true)" class="btn-primary text-xs px-2 py-1 rounded-lg">Emitir</button>`;
+                                            // A chamada aqui agora passa 'comFrequencia=true' e 'isConfirmed=false' (default)
+                                            : `<button onclick="window.adminEmitirCertificado('aluno', '${aluno.email}', ${inscricao.cursoId}, true, false)" class="btn-primary text-xs px-2 py-1 rounded-lg">Emitir</button>`;
                                     }
 
                                     html += `
@@ -4058,10 +4158,13 @@
                     if (Array.isArray(aluno.cursosInscritos)) {
                         for (const inscricao of aluno.cursosInscritos) {
                             if (inscricao.status === 'aprovado') {
+                                // Para impressão em lote, consideramos que a frequência deve estar correta ou ser ignorada pelo admin.
                                 const { status } = await calcularStatusFrequencia(aluno, inscricao.cursoId);
+                                
                                 if (status === 'Presente') {
                                     let codigoCertificado = inscricao.certificadoCodigo;
-                                    // Se não tiver código, emite silenciosamente
+                                    
+                                    // Se não tiver código, emite silenciosamente. Não faz checagem de confirmação aqui.
                                     if (!codigoCertificado) {
                                         const codigo = `NEXUS-AL-${inscricao.cursoId}-${aluno.id}`;
                                         const inscricaoIndex = aluno.cursosInscritos.findIndex(i => i.cursoId == inscricao.cursoId);
@@ -4084,7 +4187,7 @@
                 }
 
                 if (!algumCertificadoGerado) {
-                    window.mostrarModal("Nenhum aluno desta empresa está elegível para receber certificados no momento.");
+                    window.mostrarModal("Nenhum aluno desta empresa está elegível para receber certificados no momento (Frequência insuficiente ou certificado não liberado).");
                     return;
                 }
 
