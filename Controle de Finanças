@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Finanças - Controle Inteligente</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); } 50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.6); } }
+        .animate-fadeIn { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+        .animate-pulse-glow { animation: pulse-glow 3s infinite; }
+        .bg-glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        
+        /* Estilos específicos para impressão / PDF */
+        @media print {
+            body * { visibility: hidden; }
+            #report-content, #report-content * { visibility: visible; }
+            #report-content { position: absolute; left: 0; top: 0; width: 100%; color: black !important; background: white !important; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans antialiased selection:bg-emerald-500 selection:text-white">
+    
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        // --- CONFIGURAÇÃO ---
+        const SEU_WHATSAPP_VENDAS = "558899361992"; 
+        const LICENSE_PRICE = "R$ 19,90";
+        const SALT = "SILVACE-SECRET-2025"; 
+
+        // --- FUNÇÕES DE SEGURANÇA ---
+        const getDeviceId = () => {
+            let id = localStorage.getItem('nexus_device_id');
+            if (!id) {
+                id = Math.random().toString(36).substring(2, 6).toUpperCase();
+                localStorage.setItem('nexus_device_id', id);
+            }
+            return id;
+        };
+
+        const verifyUniqueKey = (key, deviceId) => {
+            try {
+                if (!key || !deviceId) return false;
+                const parts = key.trim().toUpperCase().split('-');
+                if (parts.length !== 4) return false;
+                
+                const part2 = parts[1];
+                const part3 = parts[2];
+                const signature = parts[3];
+
+                let combined = part2 + part3 + deviceId + SALT;
+                let hash = 0;
+                for (let i = 0; i < combined.length; i++) {
+                    hash = ((hash << 5) - hash) + combined.charCodeAt(i);
+                    hash |= 0;
+                }
+                const expectedSignature = Math.abs(hash).toString(16).substring(0, 4).toUpperCase().padStart(4, '0');
+
+                return signature === expectedSignature;
+            } catch (e) {
+                return false;
+            }
+        };
+
+        // --- Ícones ---
+        const Icon = ({ children, className, size = 24 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>
+        );
+        const Icons = {
+            Wallet: (p) => <Icon {...p}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></Icon>,
+            TrendingUp: (p) => <Icon {...p}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></Icon>,
+            TrendingDown: (p) => <Icon {...p}><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></Icon>,
+            Plus: (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>,
+            Trash2: (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></Icon>,
+            List: (p) => <Icon {...p}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></Icon>,
+            Home: (p) => <Icon {...p}><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>,
+            X: (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>,
+            ChevronDown: (p) => <Icon {...p}><path d="m6 9 6 6 6-6"/></Icon>,
+            Pencil: (p) => <Icon {...p}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></Icon>,
+            FileText: (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></Icon>,
+            ArrowDownUp: (p) => <Icon {...p}><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></Icon>,
+            Settings: (p) => <Icon {...p}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></Icon>,
+            Download: (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></Icon>,
+            Upload: (p) => <Icon {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></Icon>,
+            Check: (p) => <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>,
+            CheckCircle2: (p) => <Icon {...p}><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></Icon>,
+            Save: (p) => <Icon {...p}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></Icon>,
+            Lock: (p) => <Icon {...p}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></Icon>,
+            Crown: (p) => <Icon {...p}><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></Icon>,
+            ShieldCheck: (p) => <Icon {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></Icon>,
+            MessageCircle: (p) => <Icon {...p}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></Icon>,
+            LogOut: (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></Icon>,
+            Smartphone: (p) => <Icon {...p}><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></Icon>,
+            Copy: (p) => <Icon {...p}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Icon>,
+            Zap: (p) => <Icon {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></Icon>,
+            Database: (p) => <Icon {...p}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></Icon>,
+            Infinity: (p) => <Icon {...p}><path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 1 0 0-8c-2 0-4 1.33-6 4Z"/></Icon>,
+            Key: (p) => <Icon {...p}><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></Icon>,
+            Printer: (p) => <Icon {...p}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>
+        };
+
+        // --- COMPONENTE: RELATÓRIO (MODAL) ---
+        const ReportModal = ({ transactions, month, onClose }) => {
+            const reportData = useMemo(() => {
+                const filtered = transactions.filter(t => t.date.startsWith(month));
+                const stats = filtered.reduce((acc, curr) => {
+                    curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount;
+                    
+                    // Group by Method
+                    if(!acc.byMethod[curr.method]) acc.byMethod[curr.method] = 0;
+                    acc.byMethod[curr.method] += curr.amount;
+
+                    // Group by Person
+                    const person = curr.beneficiary || 'Eu';
+                    if(!acc.byPerson[person]) acc.byPerson[person] = 0;
+                    acc.byPerson[person] += curr.amount;
+
+                    return acc;
+                }, { income: 0, expense: 0, byMethod: {}, byPerson: {} });
+                return { filtered: filtered.sort((a,b) => new Date(a.date) - new Date(b.date)), stats };
+            }, [transactions, month]);
+
+            const printReport = () => window.print();
+
+            // Mapeamento para nomes legíveis
+            const methodMap = { 'pix': 'Pix', 'money': 'Dinheiro', 'card_credit': 'Crédito', 'card_debit': 'Débito', 'cheque': 'Cheque' };
+
+            return (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[80] flex items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                    <div className="bg-white w-full max-w-2xl min-h-screen sm:min-h-0 sm:rounded-2xl shadow-2xl animate-scaleIn text-slate-800 flex flex-col relative" id="report-content">
+                        
+                        {/* Header do Relatório */}
+                        <div className="p-6 border-b border-gray-200 bg-slate-50 sm:rounded-t-2xl flex justify-between items-center no-print">
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Icons.FileText className="text-emerald-600"/> Relatório Mensal</h2>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={printReport} 
+                                    className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 text-sm font-bold shadow"
+                                    title="Selecione 'Guardar como PDF' na janela de impressão"
+                                >
+                                    <Icons.Download size={18}/> <span className="hidden sm:inline">Guardar como PDF</span>
+                                </button>
+                                <button onClick={onClose} className="p-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-gray-600"><Icons.X size={20}/></button>
+                            </div>
+                        </div>
+
+                        {/* Conteúdo Imprimível */}
+                        <div className="p-8 overflow-y-auto">
+                            <div className="text-center mb-8">
+                                <h1 className="text-3xl font-black text-slate-900 mb-1">Nexus Finanças</h1>
+                                <p className="text-slate-500 uppercase tracking-widest text-xs font-bold">Relatório Financeiro</p>
+                                <p className="text-lg font-medium text-slate-700 mt-2 capitalize">Período: {new Date(month + '-02').toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+                            </div>
+
+                            {/* Resumo */}
+                            <div className="grid grid-cols-3 gap-4 mb-8">
+                                <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-center">
+                                    <p className="text-xs text-emerald-600 font-bold uppercase">Entradas</p>
+                                    <p className="text-xl font-bold text-emerald-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.income)}</p>
+                                </div>
+                                <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl text-center">
+                                    <p className="text-xs text-rose-600 font-bold uppercase">Saídas</p>
+                                    <p className="text-xl font-bold text-rose-700">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.expense)}</p>
+                                </div>
+                                <div className="p-4 bg-slate-100 border border-slate-200 rounded-xl text-center">
+                                    <p className="text-xs text-slate-500 font-bold uppercase">Saldo</p>
+                                    <p className={`text-xl font-bold ${reportData.stats.income - reportData.stats.expense >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.income - reportData.stats.expense)}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-8">
+                                {/* Por Método */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-700 uppercase border-b pb-2 mb-3">Totais por Método</h3>
+                                    <ul className="space-y-2 text-sm">
+                                        {Object.keys(reportData.stats.byMethod).map(method => (
+                                            <li key={method} className="flex justify-between">
+                                                <span className="text-slate-600 capitalize">{methodMap[method] || method}</span>
+                                                <span className="font-medium">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.byMethod[method])}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                {/* Por Pessoa */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-slate-700 uppercase border-b pb-2 mb-3">Totais por Pessoa</h3>
+                                    <ul className="space-y-2 text-sm">
+                                        {Object.keys(reportData.stats.byPerson).map(person => (
+                                            <li key={person} className="flex justify-between">
+                                                <span className="text-slate-600 capitalize">{person}</span>
+                                                <span className="font-medium">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(reportData.stats.byPerson[person])}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            {/* Extrato */}
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-700 uppercase border-b pb-2 mb-4">Extrato Detalhado</h3>
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-50 text-slate-500 font-medium">
+                                        <tr>
+                                            <th className="p-2">Data</th>
+                                            <th className="p-2">Descrição</th>
+                                            <th className="p-2">Método</th>
+                                            <th className="p-2 text-right">Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {reportData.filtered.map(t => (
+                                            <tr key={t.id}>
+                                                <td className="p-2 text-slate-500">{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                                                <td className="p-2 font-medium text-slate-700">
+                                                    {t.description} 
+                                                    {t.beneficiary !== 'eu' && <span className="text-[10px] bg-slate-100 px-1 rounded ml-1 text-slate-500 capitalize">{t.beneficiary}</span>}
+                                                </td>
+                                                <td className="p-2 text-slate-500 capitalize">{methodMap[t.method] || t.method}</td>
+                                                <td className={`p-2 text-right font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                    {t.type === 'income' ? '+' : '-'}{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {reportData.filtered.length === 0 && <p className="text-center text-slate-400 py-4 italic">Sem movimentações neste período.</p>}
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-4 border-t border-gray-200 text-center text-xs text-slate-400 sm:rounded-b-2xl">
+                            Gerado automaticamente por Nexus Finanças • {new Date().toLocaleDateString()}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- TELA DE VENDAS ---
+        const LandingPage = ({ onActivate, deviceId }) => {
+            const [key, setKey] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleBuyClick = () => {
+                const message = `Olá! Quero comprar a licença do Nexus Finanças.\n\nMeu Código de Instalação é: *${deviceId}*`;
+                const url = `https://wa.me/${SEU_WHATSAPP_VENDAS}?text=${encodeURIComponent(message)}`;
+                window.open(url, '_blank');
+            };
+
+            const copyId = () => {
+                const textArea = document.createElement("textarea");
+                textArea.value = deviceId;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    alert("Código copiado!");
+                } catch (err) {
+                    console.error('Erro ao copiar', err);
+                    alert("Erro ao copiar. Selecione e copie manualmente.");
+                }
+                document.body.removeChild(textArea);
+            };
+
+            const handleActivate = () => {
+                if(!key.trim()) { setError('Digite a chave recebida.'); return; }
+                setLoading(true);
+                setError('');
+
+                setTimeout(() => {
+                    if (verifyUniqueKey(key, deviceId)) {
+                        onActivate(key.trim());
+                    } else {
+                        setError('Chave inválida para este aparelho.');
+                        setLoading(false);
+                    }
+                }, 800);
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-premium text-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-black z-0"></div>
+                    <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-3xl pointer-events-none z-0"></div>
+                    <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-3xl pointer-events-none z-0"></div>
+
+                    <div className="max-w-md w-full relative z-10 animate-fadeIn flex flex-col items-center">
+                        <div className="mb-8 text-center">
+                            <div className="inline-flex p-5 bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl mb-6 shadow-2xl border border-slate-700/50 relative">
+                                <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full"></div>
+                                <Icons.Wallet size={64} className="text-emerald-400 relative z-10" />
+                            </div>
+                            <h1 className="text-5xl font-black tracking-tighter mb-2 bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">Nexus</h1>
+                            <p className="text-slate-400 text-lg font-medium tracking-wide">Finanças sob controle.</p>
+                        </div>
+
+                        <div className="w-full bg-glass rounded-3xl p-1 border border-slate-700/50 shadow-2xl mb-8 overflow-hidden">
+                            <div className="bg-slate-800/50 p-6 rounded-[1.4rem]">
+                                <div className="grid grid-cols-2 gap-3 mb-6">
+                                    {[{icon: Icons.Infinity, color: 'text-emerald-400', label: 'Ilimitado'}, {icon: Icons.Database, color: 'text-blue-400', label: 'Backup'}, {icon: Icons.ShieldCheck, color: 'text-amber-400', label: 'Seguro'}, {icon: Icons.Zap, color: 'text-purple-400', label: 'Rápido'}].map((item, i) => (
+                                        <div key={i} className="p-3 bg-slate-700/30 rounded-xl border border-slate-700/50 flex flex-col items-center text-center">
+                                            <div className={`${item.color} mb-2`}><item.icon size={24} /></div>
+                                            <span className="text-xs text-slate-300 font-semibold">{item.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="mb-6">
+                                    <div className="flex justify-between items-center mb-2"><p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Seu ID de Instalação</p></div>
+                                    <div className="flex items-center gap-2 bg-slate-900 rounded-xl p-1 pr-2 border border-slate-700/50">
+                                        <div className="bg-slate-800 p-2 rounded-lg text-slate-400"><Icons.Smartphone size={20} /></div>
+                                        <code className="flex-1 font-mono text-lg text-emerald-400 font-bold tracking-widest text-center">{deviceId}</code>
+                                        <button onClick={copyId} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><Icons.Copy size={18}/></button>
+                                    </div>
+                                </div>
+
+                                <button onClick={handleBuyClick} className="w-full group relative overflow-hidden rounded-xl bg-emerald-600 p-4 font-bold text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all hover:bg-emerald-500 hover:shadow-[0_0_30px_rgba(16,185,129,0.6)] hover:-translate-y-0.5 active:translate-y-0">
+                                    <div className="relative z-10 flex items-center justify-center gap-2 text-lg"><Icons.MessageCircle size={24} /><span>Ativar Agora por {LICENSE_PRICE}</span></div>
+                                    <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                                </button>
+                                <p className="text-center text-[10px] text-slate-500 mt-3">Pagamento único vitalício • Entrega imediata</p>
+                            </div>
+                        </div>
+
+                        <div className="w-full max-w-sm">
+                            <div className="flex gap-2 items-center bg-slate-800/80 p-1.5 rounded-xl border border-slate-700 transition-all focus-within:border-emerald-500/50 focus-within:ring-2 focus-within:ring-emerald-500/20">
+                                <div className="pl-3 text-slate-500"><Icons.Key size={18} /></div>
+                                <input type="text" placeholder="Cole sua chave aqui..." className="flex-1 bg-transparent border-none text-sm text-white placeholder-slate-500 focus:ring-0 uppercase font-mono tracking-wide" value={key} onChange={(e) => setKey(e.target.value)} />
+                                <button onClick={handleActivate} disabled={loading} className="px-4 py-2 bg-slate-700 hover:bg-emerald-600 rounded-lg font-bold text-white text-xs transition-colors disabled:opacity-50">{loading ? '...' : 'VALIDAR'}</button>
+                            </div>
+                            {error && <div className="mt-3 p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs text-center font-medium animate-fadeIn">{error}</div>}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- App Principal (Dashboard) ---
+        function App() {
+            const [isLocked, setIsLocked] = useState(true);
+            const [isChecking, setIsChecking] = useState(true);
+            const [deviceId, setDeviceId] = useState('');
+
+            useEffect(() => {
+                const id = getDeviceId();
+                setDeviceId(id);
+                
+                const savedKey = localStorage.getItem('nexus_license_key');
+                if (savedKey) {
+                    if (verifyUniqueKey(savedKey, id)) {
+                        setIsLocked(false);
+                    } else {
+                        localStorage.removeItem('nexus_license_key');
+                    }
+                }
+                setIsChecking(false);
+            }, []);
+
+            const unlockApp = (key) => {
+                localStorage.setItem('nexus_license_key', key);
+                setIsLocked(false);
+            };
+
+            const logout = () => {
+                if(confirm("Deseja desativar? O app será bloqueado neste dispositivo.")) {
+                    localStorage.removeItem('nexus_license_key');
+                    setIsLocked(true);
+                }
+            };
+
+            const [showModal, setShowModal] = useState(false);
+            const [showSettings, setShowSettings] = useState(false);
+            const [showReport, setShowReport] = useState(false); // NOVO ESTADO
+            const [transactions, setTransactions] = useState([]);
+            const fileInputRef = useRef(null);
+            const [saveStatus, setSaveStatus] = useState('idle');
+            const [pendingImportData, setPendingImportData] = useState(null);
+            const [filterMode, setFilterMode] = useState('month');
+            const [selectedMonth, setSelectedMonth] = useState(() => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; });
+            const [editingId, setEditingId] = useState(null);
+            const [itemToDelete, setItemToDelete] = useState(null);
+            const [formData, setFormData] = useState({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', additionalInfo: '' });
+
+            useEffect(() => {
+                if(!isLocked) {
+                    const saved = localStorage.getItem('nexus_finances_transactions');
+                    if (saved) { try { setTransactions(JSON.parse(saved)); setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2000); } catch (e) { console.error(e); } }
+                }
+            }, [isLocked]);
+
+            useEffect(() => {
+                if(!isLocked) {
+                    setSaveStatus('saving');
+                    localStorage.setItem('nexus_finances_transactions', JSON.stringify(transactions));
+                    const timer = setTimeout(() => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 3000); }, 600);
+                    return () => clearTimeout(timer);
+                }
+            }, [transactions, isLocked]);
+
+            const handleExportData = () => {
+                const licenseKey = localStorage.getItem('nexus_license_key');
+                const backupData = {
+                    version: 2,
+                    license: { key: licenseKey, deviceId: deviceId },
+                    data: transactions
+                };
+                const dataStr = JSON.stringify(backupData, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const linkElement = document.createElement('a');
+                linkElement.href = url;
+                linkElement.download = `nexus-backup-${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(linkElement);
+                linkElement.click();
+                document.body.removeChild(linkElement);
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try { 
+                        const content = JSON.parse(event.target.result);
+                        if (Array.isArray(content)) {
+                            setPendingImportData({ data: content, license: null });
+                        } else if (content.data && Array.isArray(content.data)) {
+                            setPendingImportData(content);
+                        } else {
+                            alert('Arquivo inválido.');
+                        }
+                    } catch (error) { alert('Erro ao ler arquivo.'); }
+                };
+                reader.readAsText(file);
+                e.target.value = null;
+            };
+
+            const confirmImport = () => {
+                if (pendingImportData) { 
+                    setTransactions(pendingImportData.data);
+                    if (pendingImportData.license && verifyUniqueKey(pendingImportData.license.key, deviceId)) {
+                        localStorage.setItem('nexus_license_key', pendingImportData.license.key);
+                        setIsLocked(false);
+                    }
+                    setPendingImportData(null); 
+                    setShowSettings(false); 
+                    alert('Dados restaurados com sucesso!');
+                }
+            };
+
+            const handleSaveTransaction = (e) => {
+                e.preventDefault();
+                if (!formData.description || !formData.amount) return;
+                if (editingId) { setTransactions(transactions.map(t => t.id === editingId ? { ...t, ...formData, amount: parseFloat(formData.amount) } : t)); } 
+                else { const newTransaction = { id: Date.now().toString(), ...formData, amount: parseFloat(formData.amount), createdAt: new Date().toISOString() }; setTransactions([newTransaction, ...transactions]); }
+                setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', additionalInfo: '' });
+                setEditingId(null);
+                setShowModal(false);
+            };
+
+            const handleOpenModal = (t = null) => {
+                if (t) { setFormData(t); setEditingId(t.id); } else { setFormData({ description: '', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0], method: 'pix', beneficiary: 'eu', additionalInfo: '' }); setEditingId(null); }
+                setShowModal(true);
+            };
+
+            const confirmDelete = (id) => setItemToDelete(id);
+            const executeDelete = () => { if (itemToDelete) { setTransactions(transactions.filter(t => t.id !== itemToDelete)); setItemToDelete(null); } };
+
+            const filteredTransactions = useMemo(() => {
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                return transactions.filter(t => {
+                    const tDate = new Date(t.date + 'T00:00:00');
+                    if (filterMode === 'day') return tDate.getTime() === today.getTime();
+                    if (filterMode === 'week') { const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7); return tDate >= weekAgo && tDate <= today; }
+                    if (filterMode === 'month') return `${tDate.getFullYear()}-${String(tDate.getMonth()+1).padStart(2,'0')}` === selectedMonth;
+                    return true;
+                }).sort((a,b) => new Date(b.date) - new Date(a.date));
+            }, [transactions, filterMode, selectedMonth]);
+
+            const stats = useMemo(() => filteredTransactions.reduce((acc, curr) => { curr.type === 'income' ? acc.income += curr.amount : acc.expense += curr.amount; return acc; }, { income: 0, expense: 0 }), [filteredTransactions]);
+            const balance = stats.income - stats.expense;
+            const getBeneficiaryLabel = (key) => { const labels = { 'eu': 'Eu', 'esposa': 'Esposa', 'filhos': 'Filhos', 'pais': 'Pais', 'irmaos': 'Irmãos', 'empresa': 'Empresa', 'outro': 'Outro' }; return labels[key] || key || 'Eu'; };
+
+            if (isChecking) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><Icons.Wallet className="animate-bounce" size={40} /></div>;
+            if (isLocked) return <LandingPage onActivate={unlockApp} deviceId={deviceId} />;
+
+            return (
+                <div className="min-h-screen bg-slate-50 pb-20 animate-fadeIn text-slate-800">
+                    <header className="bg-slate-900 text-white p-6 pb-24 rounded-b-[2.5rem] shadow-xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none"><Icons.Wallet size={120} /></div>
+                        <div className="absolute top-4 right-4 z-50">
+                            <button onClick={() => setShowSettings(true)} className="p-2.5 rounded-full hover:bg-slate-700 transition-colors shadow-lg border flex items-center gap-2 bg-slate-800 text-slate-300 border-slate-700"><Icons.Settings size={20} /></button>
+                        </div>
+                        <div className="relative z-10 pt-2 text-center">
+                            <h1 className="text-2xl font-bold tracking-tight">Nexus</h1>
+                            <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest bg-slate-800/50 px-2 py-1 rounded-full mt-1">Controle de Finanças</p>
+                            <div className={`mt-2 flex items-center justify-center gap-1 text-[10px] font-medium transition-all duration-300 ${saveStatus === 'saved' ? 'opacity-100' : 'opacity-0'}`}><Icons.CheckCircle2 size={12} className="text-emerald-400" /><span className="text-emerald-100">Salvo no dispositivo</span></div>
+                            <div className="mt-4"><span className="text-slate-400 text-sm font-medium uppercase tracking-wider">Saldo Atual</span><div className={`text-4xl font-bold mt-1 ${balance >= 0 ? 'text-white' : 'text-rose-400'}`}>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(balance)}</div></div>
+                        </div>
+                    </header>
+
+                    <main className="px-4 -mt-16 relative z-20 max-w-lg mx-auto space-y-4">
+                        <div className="flex items-center gap-2 bg-white p-2 rounded-xl shadow-sm border border-gray-100 overflow-x-auto no-scrollbar">
+                            <button onClick={() => setFilterMode('day')} className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filterMode === 'day' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Hoje</button>
+                            <button onClick={() => setFilterMode('week')} className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${filterMode === 'week' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Semana</button>
+                            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${filterMode === 'month' ? 'border-slate-800' : 'border-transparent'}`}><span className="text-xs font-bold">Mês:</span><input type="month" value={selectedMonth} onChange={(e) => { setSelectedMonth(e.target.value); setFilterMode('month'); }} className="bg-transparent border-none text-sm font-bold w-full outline-none" /></div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col justify-between"><div className="flex items-center gap-2 mb-2"><div className="p-2 bg-emerald-100 rounded-full text-emerald-600"><Icons.TrendingUp size={16} /></div><span className="text-xs font-semibold text-slate-500">Entradas</span></div><span className="text-lg font-bold text-emerald-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.income)}</span></div>
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col justify-between"><div className="flex items-center gap-2 mb-2"><div className="p-2 bg-rose-100 rounded-full text-rose-600"><Icons.TrendingDown size={16} /></div><span className="text-xs font-semibold text-slate-500">Saídas</span></div><span className="text-lg font-bold text-rose-600">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.expense)}</span></div>
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden pb-24">
+                            <div className="bg-slate-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between"><h3 className="font-bold text-slate-800 flex items-center gap-2"><Icons.ArrowDownUp size={16} className="text-slate-500" /> Lançamentos</h3><span className="text-xs font-bold text-white bg-slate-800 px-2 py-0.5 rounded-full">{filteredTransactions.length}</span></div>
+                            <div className="space-y-0 p-2">
+                                {filteredTransactions.map(t => (
+                                    <div key={t.id} className="p-3 rounded-lg hover:bg-slate-50 border-b border-gray-50 last:border-0 flex flex-col gap-2 group transition-colors">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-full ${t.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{t.type === 'income' ? <Icons.TrendingUp size={18} /> : <Icons.TrendingDown size={18} />}</div>
+                                                <div className="overflow-hidden">
+                                                    <p className="font-bold text-sm text-slate-800 truncate max-w-[150px]">{t.description}</p>
+                                                    <p className="text-xs text-slate-400 flex flex-wrap items-center gap-1">
+                                                        <span>{t.method}</span><span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                                        <span className="font-medium text-slate-500 capitalize">{t.beneficiary}</span><span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                                        <span>{new Date(t.date+'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col items-end shrink-0">
+                                                <span className={`font-bold text-sm ${t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type === 'income' ? '+' : '-'}{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.amount)}</span>
+                                                <div className="flex gap-1 mt-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => handleOpenModal(t)} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-full"><Icons.Pencil size={14} /></button>
+                                                    <button onClick={() => setItemToDelete(t.id)} className="p-1.5 text-slate-400 hover:text-rose-500 rounded-full"><Icons.Trash2 size={14} /></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {t.additionalInfo && <div className="text-xs text-slate-500 bg-slate-50/50 p-2 rounded ml-11"><Icons.FileText size={12} className="inline mr-1" />{t.additionalInfo}</div>}
+                                    </div>
+                                ))}
+                                {filteredTransactions.length === 0 && <div className="text-center py-10 text-sm text-slate-500">Nenhum lançamento encontrado.</div>}
+                            </div>
+                        </div>
+                    </main>
+
+                    <nav className="fixed bottom-0 w-full bg-white border-t border-gray-100 pb-2 z-30 shadow-[0_-5px_15px_rgba(0,0,0,0.02)]">
+                        <div className="flex justify-center items-end max-w-lg mx-auto px-8 h-16"><div className="relative -top-5"><button onClick={() => handleOpenModal()} className="bg-slate-800 text-white p-4 rounded-full shadow-lg hover:bg-slate-700 transition-transform active:scale-95 border-4 border-slate-50"><Icons.Plus size={32} /></button></div></div>
+                    </nav>
+
+                    {showModal && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center animate-fadeIn">
+                            <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl animate-slideUp max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar' : 'Novo Lançamento'}</h2><button onClick={() => setShowModal(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20} /></button></div>
+                                <form onSubmit={handleSaveTransaction} className="space-y-4">
+                                    <div className="flex bg-gray-100 p-1 rounded-xl">
+                                        <button type="button" onClick={() => setFormData({...formData, type: 'expense'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'expense' ? 'bg-white text-rose-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingDown size={16} /> Saída</button>
+                                        <button type="button" onClick={() => setFormData({...formData, type: 'income'})} className={`flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all ${formData.type === 'income' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500'}`}><Icons.TrendingUp size={16} /> Entrada</button>
+                                    </div>
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase">Valor</label><input type="number" step="0.01" required className="w-full p-3 bg-slate-50 border rounded-xl text-lg font-bold" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} /></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase">Descrição</label><input type="text" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} /></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="block text-xs font-bold text-slate-500 uppercase">Data</label><input type="date" required className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} /></div>
+                                        <div><label className="block text-xs font-bold text-slate-500 uppercase">Referente</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.beneficiary} onChange={(e) => setFormData({...formData, beneficiary: e.target.value})}><option value="eu">Eu</option><option value="esposa">Esposa</option><option value="filhos">Filhos</option><option value="pais">Pais</option><option value="irmaos">Irmãos</option><option value="empresa">Empresa</option><option value="outro">Outro</option></select></div>
+                                    </div>
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase">Método</label><select className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.method} onChange={(e) => setFormData({...formData, method: e.target.value})}><option value="pix">Pix</option><option value="money">Dinheiro</option><option value="card_credit">Crédito</option><option value="card_debit">Débito</option><option value="cheque">Cheque</option></select></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase">Infos</label><textarea className="w-full p-3 bg-slate-50 border rounded-xl" value={formData.additionalInfo} onChange={(e) => setFormData({...formData, additionalInfo: e.target.value})} /></div>
+                                    <button type="submit" className={`w-full py-3 rounded-lg font-bold text-white shadow-md ${formData.type === 'income' ? 'bg-emerald-600' : 'bg-rose-500'}`}>Salvar</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {showReport && (
+                        <ReportModal 
+                            transactions={transactions} 
+                            month={selectedMonth} 
+                            onClose={() => setShowReport(false)} 
+                        />
+                    )}
+
+                    {showSettings && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fadeIn text-slate-800">
+                            <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-scaleIn overflow-y-auto max-h-[90vh]">
+                                <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-slate-800">Configurações</h3><button onClick={() => setShowSettings(false)} className="p-2 bg-gray-100 rounded-full"><Icons.X size={20}/></button></div>
+                                <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4">
+                                    <p className="text-xs font-bold text-emerald-800 uppercase mb-1">Licença Ativa (Device Locked)</p>
+                                    <div className="flex items-center gap-2 text-sm text-emerald-700 font-mono"><Icons.Smartphone size={16}/> <span>{deviceId}</span></div>
+                                </div>
+                                <div className="space-y-2">
+                                    <button onClick={() => { setShowSettings(false); setShowReport(true); }} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50 text-slate-700"><Icons.FileText className="text-purple-600"/> <span>Gerar Relatório Mensal</span></button>
+                                    <button onClick={handleExportData} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Download className="text-emerald-600"/> <span>Baixar Backup Completo</span></button>
+                                    <button onClick={() => fileInputRef.current.click()} className="w-full p-3 border rounded-xl flex items-center gap-3 hover:bg-slate-50"><Icons.Upload className="text-blue-600"/> <span>Restaurar Backup</span></button>
+                                    <button onClick={logout} className="w-full p-3 border border-rose-200 bg-rose-50 rounded-xl flex items-center gap-3 hover:bg-rose-100 mt-4 text-rose-700 font-bold"><Icons.LogOut className="text-rose-600"/> <span>Desativar Licença</span></button>
+                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".json" className="hidden" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {pendingImportData && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 text-slate-800">
+                            <div className="bg-white rounded-2xl p-6 text-center shadow-2xl">
+                                <h3 className="text-lg font-bold mb-2">Confirmar Importação?</h3>
+                                <p className="text-sm text-slate-500 mb-4">Isso substituirá todos os dados e licenças atuais.</p>
+                                <div className="flex gap-2"><button onClick={() => setPendingImportData(null)} className="flex-1 py-2 bg-slate-100 rounded">Cancelar</button><button onClick={confirmImport} className="flex-1 py-2 bg-blue-600 text-white rounded">Confirmar</button></div>
+                            </div>
+                        </div>
+                    )}
+
+                    {itemToDelete && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 text-slate-800">
+                            <div className="bg-white rounded-2xl p-6 text-center shadow-2xl">
+                                <h3 className="text-lg font-bold mb-2">Excluir?</h3>
+                                <div className="flex gap-2"><button onClick={() => setItemToDelete(null)} className="flex-1 py-2 bg-slate-100 rounded">Cancelar</button><button onClick={() => { setTransactions(transactions.filter(t => t.id !== itemToDelete)); setItemToDelete(null); }} className="flex-1 py-2 bg-rose-500 text-white rounded">Excluir</button></div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
